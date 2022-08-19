@@ -37,7 +37,7 @@ const outdir = "bin";
 console.log( "\n".repeat(20) );
 
 
-log( chalk.bgBlue.bold( ":: BUILDING ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::" ) );
+log( chalk.bgBlue.bold( ":: BUILDING :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::" ) );
 
 await esbuild.build({
 	logLevel: "info",
@@ -187,7 +187,7 @@ if (hasArg("hmr")) {
 
 if ( hasArg("serve")) {
 
-	log( chalk.bgBlue.bold( ":: SERVER ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::") );
+	log( chalk.bgBlue.bold( ":: SERVER :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::" ) );
 
 	const srv = createServer();
 	srv.addListener("request", (req, res) => {
