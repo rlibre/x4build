@@ -75,7 +75,7 @@ await esbuild.build({
 			]
 		})
 	],
-	//external: [ "electron" ],
+	external: electron ? [ "electron" ] : [],
 	loader: {
 		'.png': 'file',
 		'.svg': 'file',
