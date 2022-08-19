@@ -29,7 +29,7 @@ function log( ...message ) {
   	console.info( ...message);
 }
 
-
+const electron = hasArg( 'electron' );
 const release = hasArg('release');
 const outdir = "bin";
 
@@ -37,7 +37,7 @@ const outdir = "bin";
 console.log( "\n".repeat(20) );
 
 
-log( chalk.bgBlue.bold( ":: BUILDING :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::" ) );
+log( chalk.bgBlue.bold( ":: BUILDING ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::" ) );
 
 await esbuild.build({
 	logLevel: "info",
@@ -47,13 +47,13 @@ await esbuild.build({
 	sourcemap: release ? false : "inline",
 	minify: release ? true : false,
 	keepNames: true,
-	target: "esnext",
+	target: electron ? "node16" : "esnext",
 	watch: hasArg("watch"),
 	charset: "utf8",
 	assetNames: 'assets/[name]',
 	chunkNames: '[ext]/[name]',
 	legalComments: "none",
-	platform: "browser",
+	platform: electron ? "node" : "browser",
 	format: "iife",
 	incremental: !release,
 	define: {
@@ -185,9 +185,9 @@ if (hasArg("hmr")) {
 }
 
 
-if ( hasArg("serve")) {
+if ( hasArg("serve") && !electron ) {
 
-	log( chalk.bgBlue.bold( ":: SERVER :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::" ) );
+	log( chalk.bgBlue.bold( ":: SERVER ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::") );
 
 	const srv = createServer();
 	srv.addListener("request", (req, res) => {

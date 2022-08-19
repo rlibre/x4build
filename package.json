@@ -1,6 +1,6 @@
 {
   "name": "x4build",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "x4js solution builder, server and hmr",
   "main": "x4build.mjs",
   "scripts": {
