@@ -19,8 +19,11 @@
 *		watch: 		watch for source modifications
 *		monitor=<file>:	monitor for file modification (node)
 *
+*		create name=<project name> model=<html, electron or node> <overwrite>
+*
 *	example:
 *		npx x4build node monitor=main.js
+*		npx create name="test" model="electron"
 *
 *
 *	package.json
@@ -43,24 +46,31 @@ import * as http from 'http';
 import * as path from 'path';
 import * as fs from 'fs';
 import WS from 'faye-websocket';
+import downloadUrl from "download";
 
 import esbuild from 'esbuild';
 import htmlPlugin from '@chialab/esbuild-plugin-html';
 import { lessLoader } from 'esbuild-plugin-less';
 
-const raw_package = fs.readFileSync("package.json", { encoding: "utf-8" });
-const pkg = JSON.parse(raw_package);
-
 const runningdir = path.resolve( );
 
-let raw_tsconfig = fs.readFileSync("tsconfig.json", { encoding: "utf-8" });
-raw_tsconfig = raw_tsconfig.replace(/\/\*.*\*\//g, "");		// multiline comments
-raw_tsconfig = raw_tsconfig.replace(/\/\/.*/g, "");			// signeline comments
-raw_tsconfig = raw_tsconfig.replace(/,([\w\n\r]*)}/g, "$1}");	// trailing comma
-const tscfg = JSON.parse(raw_tsconfig);
+
+
+function loadJSON( fname ) {
+	let raw_json = fs.readFileSync( fname, { encoding: "utf-8" });
+	raw_json = raw_json.replace(/\/\*.*\*\//g, "");		// multiline comments
+	raw_json = raw_json.replace(/\/\/.*/g, "");			// signeline comments
+	raw_json = raw_json.replace(/,([\w\n\r]*)}/g, "$1}");	// trailing comma
+	return JSON.parse(raw_json);
+}
+
+function writeJSON( fname, json ) {
+	let raw_json = JSON.stringify( json, undefined, 4 );
+	fs.writeFileSync( fname, raw_json, { encoding: "utf-8" });
+}
+
 
 const cmdParser = new class {
-
 	args = process.argv.slice(2);
 
 	hasArg(what) {
@@ -79,6 +89,102 @@ const cmdParser = new class {
 function log(...message) {
 	console.info(...message);
 }
+
+
+if( cmdParser.hasArg("create") ) {
+
+	log("\n");
+	log(chalk.cyan.bold(" :: NEW PROJECT ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::"));	
+
+	function usage( ) {
+		log( chalk.white("create name=<project name> model=<html,node or electron> <overwrite>"))
+		process.exit( -1 );
+	}
+
+	async function create( name, url ) {
+
+		const real = path.resolve( name );
+		if( !cmdParser.hasArg("overwrite") && fs.existsSync(real) ) {
+			log( chalk.red(`Cannot overwrite ${real}.`) );
+			process.exit( -1 );
+		}
+		
+		const downloadOptions = {
+			extract: true,
+			strip: 1,
+			mode: '666',
+			headers: {
+				accept: 'application/zip'
+			}
+		}
+
+		try {
+			log( chalk.yellow("get files..."))
+			await downloadUrl(url, real, downloadOptions);
+			
+			log( chalk.yellow("setup project..."));
+
+			// update package.json
+			const pkgname = path.join(real,"package.json");
+			const pkg = loadJSON( pkgname );
+			pkg.name = name;
+			pkg.description = `${name} project`
+			writeJSON( pkgname, pkg );
+
+			spawnSync( "npm i", {
+				cwd: real,
+				shell: true,
+				stdio: "inherit"
+			} )
+
+			log( chalk.bgGreen.white("\n:: done ::") )
+		}
+		catch( err ) {
+			log( chalk.red(err) );
+			process.exit( -1 );
+		}
+	}
+
+	const name = cmdParser.getArgValue( "name" );
+	if( !name ) {
+		usage( );
+	}
+
+	const model = cmdParser.getArgValue( "model" );
+	let mpath = null;
+
+	switch( model ) {
+		case "html": {
+			mpath = "https://github.com/rlibre/template/archive/refs/heads/main.zip";
+			break;
+		}
+
+		case "node": {
+			break;
+		}
+
+		case "electron": {
+			mpath = "https://github.com/rlibre/template/archive/refs/heads/main.zip";
+			break;
+		}
+
+		default: {
+			usage( );
+			break;
+		}
+	}
+	
+	await create( name, mpath );
+	process.exit( 0 );
+}
+
+
+
+
+
+
+const pkg = loadJSON( "package.json");
+const tscfg = loadJSON( "tsconfig.json" );
 
 const is_node = cmdParser.hasArg('node');
 const is_electron = cmdParser.hasArg('electron');

@@ -1,6 +1,12 @@
 # x4build
 x4 solution builder
 
+## creating a new project
+	```sh
+	npx create 
+	```
+
+
 ## arguments:
 	- node:		node project
 	- electron:	electron project
@@ -14,9 +20,19 @@ x4 solution builder
 	- watch: 		watch for source modifications
 	- monitor=<file>:	monitor for file modification (node)
 
+	- create name=<project name> model=<html, electron or node> <overwrite>
+
 example:
+	```sh
+		# create an empty electron project
+		# this will create a new folder named test with all files to start a new electron project
+		npx create name=test model=electron
 	```
-		npx x4build node monitor=main.js
+
+	```sh
+		# build an lectron project and monitor the main.js file
+		# kill &nd reload main.js when chaning
+		npx x4build electron monitor=main.js
 	```
 	
 
