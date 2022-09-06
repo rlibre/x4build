@@ -1,14 +1,15 @@
 {
   "name": "x4build",
-  "version": "1.0.10",
-  "description": "x4js solution builder, server and hmr",
+  "version": "1.0.15",
+  "description": "x4js solution builder, server and hmr, cli command line",
   "main": "x4build.mjs",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/rlibre/x4build.git"
   },
   "keywords": [
-    "x4js", "x4build"
+    "x4js",
+    "x4build"
   ],
   "author": "ecochard@r-libre.fr",
   "license": "MIT",
@@ -21,8 +22,8 @@
     "@chialab/esbuild-plugin-html": "^0.16.4",
     "chalk": "^5.0.1",
     "chokidar": "^3.5.3",
+    "download": "^8.0.0",
     "esbuild": "^0.14.5",
-    "esbuild-plugin-copy": "^1.3.0",
     "esbuild-plugin-less": "^1.1.9",
     "faye-websocket": "^0.11.4"
   }

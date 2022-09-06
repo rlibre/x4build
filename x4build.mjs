@@ -25,8 +25,9 @@
 *
 *	package.json
 *		x4build: {
-*			postBuild: [ "command line1", "command line2"],		// ${srcdir}, ${dstdir} are recognized
+*			"postBuild": [ "cp -ra ${srcdir}/assets/* ${outdir}", "command line2"],		// ${srcdir}, ${outdir} are recognized
 *			"external": [ "better-sqlite3" ],					// don't bundle these elements (you must use npm install for them in the dist folder)
+			"publicPath": "public/path",						// public path for resbuild
 *		}
 *
 *	tsconfig.json
@@ -46,7 +47,6 @@ import WS from 'faye-websocket';
 import esbuild from 'esbuild';
 import htmlPlugin from '@chialab/esbuild-plugin-html';
 import { lessLoader } from 'esbuild-plugin-less';
-import { copy } from 'esbuild-plugin-copy';
 
 const raw_package = fs.readFileSync("package.json", { encoding: "utf-8" });
 const pkg = JSON.parse(raw_package);
@@ -54,8 +54,9 @@ const pkg = JSON.parse(raw_package);
 const runningdir = path.resolve( );
 
 let raw_tsconfig = fs.readFileSync("tsconfig.json", { encoding: "utf-8" });
-raw_tsconfig = raw_tsconfig.replace(/\/\*.*\*\//g, "");
-raw_tsconfig = raw_tsconfig.replace(/\/\/.*/g, "");
+raw_tsconfig = raw_tsconfig.replace(/\/\*.*\*\//g, "");		// multiline comments
+raw_tsconfig = raw_tsconfig.replace(/\/\/.*/g, "");			// signeline comments
+raw_tsconfig = raw_tsconfig.replace(/,([\w\n\r]*)}/g, "$1}");	// trailing comma
 const tscfg = JSON.parse(raw_tsconfig);
 
 const cmdParser = new class {
@@ -103,11 +104,11 @@ log(chalk.green("watch...: "), watch ? "yes" : "no");
 log(chalk.green("mode....: "), release ? "release" : "debug");
 log(chalk.green("serve...: "), serve_files ? "yes" : "no");
 log(chalk.green("hmr.....: "), need_hmr ? "yes" : "no");
-log(chalk.green("monitor.: "), monitor);
+log(chalk.green("monitor.: "), monitor ? "yes" : "no");
 
 
 log("\n");
-log(chalk.cyan.bold(":: BUILDING ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::"));
+log(chalk.cyan.bold(" :: BUILDING ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::"));
 
 const node_plugins = [];
 
@@ -115,15 +116,6 @@ const html_plugins = [
 	htmlPlugin(),
 	lessLoader({
 		rootpath: ".",
-	}),
-	copy({
-		assets: [
-			{
-				from: ['src/assets/**/*'],
-				to: ['.'],
-				keepStructure: true
-			},
-		]
 	})
 ]
 
@@ -141,8 +133,8 @@ const onRebuild = (error, result) => {
 			}
 
 			tasks.forEach( task => {
-				task = task.replaceAll( "${outdir}", outdir );
-				task = task.replaceAll( "${srcdir}", runningdir );
+				task = task.replaceAll( /\$\{\w*outdir\w*\}/ig, path.resolve(outdir) );
+				task = task.replaceAll( /\$\{\w*srcdir\w*\}/ig, path.resolve(runningdir) );
 
 				log( "> ", task );
 				
@@ -169,6 +161,7 @@ await esbuild.build({
 	charset: "utf8",
 	assetNames: 'assets/[name]',
 	chunkNames: 'assets/[name]',
+	publicPath: pkg?.x4build?.publicPath,
 	legalComments: "none",
 	platform: (is_node || is_electron) ? "node" : "browser",
 	format: "iife",
@@ -178,7 +171,7 @@ await esbuild.build({
 	},
 	plugins: is_node ? node_plugins : html_plugins,
 	external: is_electron ? ["electron"] : pkg.x4build?.external,
-
+	allowOverwrite: true,
 	loader: {
 		'.png': 'file',
 		'.svg': 'file',
@@ -191,7 +184,7 @@ onRebuild( );
 
 if (is_node) {
 	if (monitor) {
-		log(chalk.cyan.bold("\n:: MONITOR :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::"));
+		log(chalk.cyan.bold("\n :: MONITOR :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::"));
 
 		let isReady = false;
 		let updateTmo = undefined;
@@ -274,16 +267,16 @@ else {
 	}
 
 	if (need_hmr) {
-		log(chalk.cyan.bold(":: HMR ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::"));
+		log(chalk.cyan.bold(" :: HMR :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::"));
 
-		const watcher = chokidar.watch(outdir, {
+		const watcher = chokidar.watch( [outdir], {
 			ignored: [
-				"${outdir}/plugins", /.*\.map$/ 
+				/.*\.map$/ 
 			]
 		});
 
 		let clients = [];
-		const wait = 1000;
+		const wait = 2000;
 
 		const server = createServer();
 
@@ -324,7 +317,7 @@ else {
 				return;
 			}
 
-			let cssChange = path.extname(changePath) === ".css";
+			let cssChange = ["css", "jpg", "png", "svg", "ttf", "otf" ].indexOf(path.extname(changePath))>=0;
 			let notified = false;
 
 			clients.forEach((c) => {
@@ -356,7 +349,7 @@ else {
 
 	if (serve_files && !is_electron) {
 
-		log(chalk.cyan.bold(":: SERVER ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::"));
+		log(chalk.cyan.bold(" :: SERVER ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::"));
 
 		const srv = createServer();
 		srv.addListener("request", (req, res) => {
