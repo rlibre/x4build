@@ -40,7 +40,7 @@
 **/
 
 import chalk from 'chalk';
-import { spawn, spawnSync } from "child_process";
+import { execSync, spawn, spawnSync } from "child_process";
 import * as chokidar from 'chokidar';
 import * as http from 'http';
 import * as path from 'path';
@@ -101,7 +101,7 @@ if( cmdParser.hasArg("create") ) {
 		process.exit( -1 );
 	}
 
-	async function create( name, url ) {
+	async function create( name, url, model ) {
 
 		const real = path.resolve( name );
 		if( !cmdParser.hasArg("overwrite") && fs.existsSync(real) ) {
@@ -129,6 +129,34 @@ if( cmdParser.hasArg("create") ) {
 			const pkg = loadJSON( pkgname );
 			pkg.name = name;
 			pkg.description = `${name} project`
+
+			switch( model ) {
+				case "html": {
+					pkg.scripts = {
+						"build-dev": "x4build html debug watch hmr serve",
+						"build-release": "x4build html release",
+					};
+					break;
+				}
+
+				case "electron": {
+					pkg.scripts = {
+						"build-dev": "x4build electron debug watch hmr",
+						"build-release": "x4build electron release",
+					};
+
+					break;
+				}
+
+				case "node": {
+					pkg.scripts = {
+						"build-dev": "x4build node debug monitor=main.js",
+						"build-release": "x4build node release",
+					};
+					break;
+				}
+			}
+
 			writeJSON( pkgname, pkg );
 
 			spawnSync( "npm i", {
@@ -138,6 +166,8 @@ if( cmdParser.hasArg("create") ) {
 			} )
 
 			log( chalk.bgGreen.white("\n:: done ::") )
+
+			execSync( "code .", { cwd: real });
 		}
 		catch( err ) {
 			log( chalk.red(err) );
