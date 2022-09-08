@@ -199,11 +199,12 @@ if( cmdParser.hasArg("create") ) {
 		}
 
 		case "node": {
+			mpath = "https://github.com/rlibre/template-node/archive/refs/heads/main.zip";
 			break;
 		}
 
 		case "electron": {
-			mpath = "https://github.com/rlibre/template/archive/refs/heads/main.zip";
+			mpath = "https://github.com/rlibre/template-electron/archive/refs/heads/main.zip";
 			break;
 		}
 
@@ -308,7 +309,7 @@ await esbuild.build({
 	entryPoints: [ /*"src/index.html"*/pkg.main],
 	outdir,
 	bundle: true,
-	sourcemap: release ? false : "external",
+	sourcemap: release ? false : "inline",
 	minify: release ? true : false,
 	keepNames: true,
 	target: (is_node || is_electron) ? "node16" : "esnext",
