@@ -23,32 +23,36 @@ x4 solution builder
 	- create name=<project name> model=<html, electron or node> <overwrite>
 
 example:
-	```sh
-		# create an empty electron project
-		# this will create a new folder named test with all files to start a new electron project
-		npx create name=test model=electron
-	```
+```bash
+	# create an empty electron project
+	# this will create a new folder named test with all files to start a new electron project
+	npx create name=test model=electron
+```
 
-	```sh
-		# build an lectron project and monitor the main.js file
-		# kill &nd reload main.js when chaning
-		npx x4build electron monitor=main.js
-	```
+```bash
+	# build an lectron project and monitor the main.js file
+	# kill &nd reload main.js when chaning
+	npx x4build electron monitor=main.js
+```
 	
 
 ## package.json
-	```json
-	"x4build": {
-		"postBuild": [ "command line1", "command line2"],		// ${srcdir}, ${dstdir} are recognized
-		"external": [ "better-sqlite3" ],					// don't bundle these elements (you must use npm install for them in the dist folder)
-	}
-	```
+
+- postBuild: commands to start after compilation; ${srcdir}, ${dstdir} are recognized
+- external: don't bundle these elements (you must use npm install for them in the dist folder)
+
+```json
+"x4build": {
+	"postBuild": [ "command line1", "command line2"],		
+	"external": [ "better-sqlite3" ],					
+}
+```
 
 
 ## tsconfig.json
-	```json
-	"compilerOptions": {
-		"outDir": "../../dist",
-	}
-	```
+```json
+"compilerOptions": {
+	"outDir": "../../dist",
+}
+```
 
