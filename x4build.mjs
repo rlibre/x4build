@@ -28,6 +28,7 @@
 *
 *	package.json
 *		x4build: {
+			"preBuild": ["echo 'build starting'"],
 *			"postBuild": [ "cp -ra ${srcdir}/assets/* ${outdir}", "command line2"],		// ${srcdir}, ${outdir} are recognized
 *			"external": [ "better-sqlite3" ],					// don't bundle these elements (you must use npm install for them in the dist folder)
 			"publicPath": "public/path",						// public path for resbuild
@@ -58,10 +59,18 @@ const runningdir = path.resolve( );
 
 function loadJSON( fname ) {
 	let raw_json = fs.readFileSync( fname, { encoding: "utf-8" });
-	raw_json = raw_json.replace(/\/\*.*\*\//g, "");		// multiline comments
-	raw_json = raw_json.replace(/\/\/.*/g, "");			// signeline comments
-	raw_json = raw_json.replace(/,([\w\n\r]*)}/g, "$1}");	// trailing comma
-	return JSON.parse(raw_json);
+		
+	try {
+		raw_json = raw_json.replace(/\/\*.*\*\//g, "");		// multiline comments
+		raw_json = raw_json.replace(/\/\/.*/g, "");			// signeline comments
+		raw_json = raw_json.replace(/,([\s\n\r]*)([\]\}])/g, "$1$2");	// trailing comma
+		return JSON.parse(raw_json);
+	}
+	catch( e ) {
+		log( chalk.red( `cannot parse ${fname}.`) );
+		log( chalk.white( raw_json ) );
+		process.exit( -1 );
+	}
 }
 
 function writeJSON( fname, json ) {
@@ -255,6 +264,28 @@ const html_plugins = [
 	})
 ]
 
+const runAction = ( actionName ) => {
+	let tasks = pkg.x4build[actionName];
+	if( !Array.isArray(tasks) ) {
+		tasks = [tasks];
+	}
+
+	tasks.forEach( task => {
+		task = task.replaceAll( /\$\{\w*outdir\w*\}/ig, path.resolve(outdir) );
+		task = task.replaceAll( /\$\{\w*srcdir\w*\}/ig, path.resolve(runningdir) );
+
+		log( "> ", task );
+		
+		const ret = spawnSync( task, {
+			cwd: runningdir,
+			shell: true,
+			stdio: "inherit"
+		} );
+	} );
+}
+
+
+
 const onRebuild = (error, result) => {
 	if (error) {
 		log('watch build failed:', error);
@@ -262,26 +293,14 @@ const onRebuild = (error, result) => {
 	else {
 		if (pkg?.x4build?.postBuild ) {
 			log('... calling post build action ...');
-		
-			let tasks = pkg.x4build.postBuild;
-			if( !Array.isArray(tasks) ) {
-				tasks = [tasks];
-			}
-
-			tasks.forEach( task => {
-				task = task.replaceAll( /\$\{\w*outdir\w*\}/ig, path.resolve(outdir) );
-				task = task.replaceAll( /\$\{\w*srcdir\w*\}/ig, path.resolve(runningdir) );
-
-				log( "> ", task );
-				
-				const ret = spawnSync( task, {
-					cwd: runningdir,
-					shell: true,
-					stdio: "inherit"
-				} );
-			} );
+			runAction( "postBuild" );
 		}
 	}
+}
+
+if (pkg?.x4build?.preBuild ) {
+	log('... calling pre build action ...');
+	runAction( "preBuild" );
 }
 
 await esbuild.build({
@@ -316,7 +335,10 @@ await esbuild.build({
 	}
 });
 
-onRebuild( );
+if (pkg?.x4build?.postBuild ) {
+	log('... calling post build action ...');
+	runAction( "postBuild" );
+}
 
 if (is_node) {
 	if (monitor) {
@@ -453,7 +475,7 @@ else {
 				return;
 			}
 
-			let cssChange = ["css", "jpg", "png", "svg", "ttf", "otf" ].indexOf(path.extname(changePath))>=0;
+			let cssChange = [".css", ".jpg", ".png", ".svg", ".ttf", ".otf" ].indexOf(path.extname(changePath))>=0;
 			let notified = false;
 
 			clients.forEach((c) => {
