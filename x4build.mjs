@@ -359,8 +359,9 @@ await esbuild.build({
 	target: (is_node || is_electron) ? "node16" : "esnext",
 	watch: (watch || (monitor ? true : false)) ? { onRebuild } : false,
 	charset: "utf8",
-	assetNames: 'assets/[name]',
-	chunkNames: 'assets/[name]',
+	// for now there is a problem with htmlplugin, i have created an issue
+	// assetNames: 'assets/[name]',
+	// chunkNames: 'assets/[name]',
 	publicPath: pkg?.x4build?.publicPath,
 	legalComments: "none",
 	platform: (is_node || is_electron) ? "node" : "browser",
