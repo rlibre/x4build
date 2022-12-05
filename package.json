@@ -1,6 +1,6 @@
 {
   "name": "x4build",
-  "version": "1.0.24",
+  "version": "1.5.1",
   "description": "x4js solution builder, server and hmr, cli command line",
   "main": "x4build.mjs",
   "repository": {
@@ -19,7 +19,7 @@
   "bin": "x4build.mjs",
   "homepage": "https://github.com/rlibre/x4build#readme",
   "dependencies": {
-    "@chialab/esbuild-plugin-html": "^0.16.4",
+    "@chialab/esbuild-plugin-html": "^0.17.2",
     "chalk": "^5.0.1",
     "chokidar": "^3.5.3",
     "download": "^8.0.0",

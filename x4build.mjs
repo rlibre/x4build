@@ -57,6 +57,39 @@ const runningdir = path.resolve( );
 
 
 
+
+
+
+
+
+/**
+ * command line parsing
+ */
+
+
+ const args = new class {
+	args = process.argv.slice(2);
+
+	has(what) {
+		return this.args.some(a => a.startsWith(what));
+	}
+
+	get count( ) {
+		return this.args.length;
+	}
+
+	getValue(what) {
+		const index = this.args.findIndex(a => a.startsWith(what));
+		if (index < 0) return undefined;
+
+		const [arg, value] = this.args[index].split("=");
+		return value;
+	}
+}
+
+
+
+
 function loadJSON( fname ) {
 	let raw_json = fs.readFileSync( fname, { encoding: "utf-8" });
 		
@@ -78,42 +111,52 @@ function writeJSON( fname, json ) {
 	fs.writeFileSync( fname, raw_json, { encoding: "utf-8" });
 }
 
-
-const cmdParser = new class {
-	args = process.argv.slice(2);
-
-	hasArg(what) {
-		return this.args.some(a => a.startsWith(what));
-	}
-
-	getArgValue(what) {
-		const index = this.args.findIndex(a => a.startsWith(what));
-		if (index < 0) return undefined;
-
-		const [arg, value] = this.args[index].split("=");
-		return value;
-	}
-}
-
 function log(...message) {
 	console.info(...message);
 }
 
 
-if( cmdParser.hasArg("create") ) {
+function usage( ) {
+	console.log( `
+${chalk.yellow('x4build <project type> <mode> serve hmr watch monitor=path')}
+build the project
+
+where:
+    project type:   node | electron | html*
+    mode:           release | debug*
+    serve:          serve file (only html)
+    hmr:			hot module replacement (.ts,.js,.css)
+    watch:          watch source modifications
+    monitor: 		extra path to monitor
+
+- OR -
+
+${chalk.green('x4buid create name=<project_name> model=<project type> override')}
+
+create a new project named <project name>
+
+where:
+    project type:   node | electron | html
+    override:       if not set, do not overwrite existing folder
+`)
+
+	process.exit( 0 );
+}
+
+if( args.has('help') || !args.count ) {
+	usage( );
+}
+
+
+if( args.has("create") ) {
 
 	log("\n");
 	log(chalk.cyan.bold(" :: NEW PROJECT ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::"));	
 
-	function usage( ) {
-		log( chalk.white("create name=<project name> model=<html,node or electron> <overwrite>"))
-		process.exit( -1 );
-	}
-
 	async function create( name, url, model ) {
 
 		const real = path.resolve( name );
-		if( !cmdParser.hasArg("overwrite") && fs.existsSync(real) ) {
+		if( !args.has("overwrite") && fs.existsSync(real) ) {
 			log( chalk.red(`Cannot overwrite ${real}.`) );
 			process.exit( -1 );
 		}
@@ -184,12 +227,12 @@ if( cmdParser.hasArg("create") ) {
 		}
 	}
 
-	const name = cmdParser.getArgValue( "name" );
+	const name = args.getValue( "name" );
 	if( !name ) {
 		usage( );
 	}
 
-	const model = cmdParser.getArgValue( "model" );
+	const model = args.getValue( "model" );
 	let mpath = null;
 
 	switch( model ) {
@@ -226,15 +269,16 @@ if( cmdParser.hasArg("create") ) {
 const pkg = loadJSON( "package.json");
 const tscfg = loadJSON( "tsconfig.json" );
 
-const is_node = cmdParser.hasArg('node');
-const is_electron = cmdParser.hasArg('electron');
-const release = cmdParser.hasArg('release');
-const watch = cmdParser.hasArg('watch');
-const serve_files = cmdParser.hasArg("serve");
-const need_hmr = cmdParser.hasArg("hmr");
+const is_node = args.has('node');
+const is_electron = args.has('electron');
+
+const release = args.has('release');
+const watch = args.has('watch');
+const serve_files = args.has("serve");
+const need_hmr = args.has("hmr");
 const outdir = path.resolve( tscfg?.compilerOptions?.outDir ?? "./bin" );
 
-let monitor = cmdParser.getArgValue("monitor");
+let monitor = args.getValue("monitor");
 if (monitor) {
 	monitor = path.resolve(path.join(outdir, monitor));
 }
