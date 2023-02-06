@@ -6,47 +6,21 @@
 * @copyright (c) 2022 R-libre ingenierie, all rights reserved.
 *
 * @description quick and dirty compiler, server & hmr
-* x4build command line
-*		node:		node project
-*		electron:	electron project
-*		html:		html project
+* x4build command line: x4build help
 *
-*		release: 	build the release 
-*		debug:		build in debug mode
-*
-*		serve: 		serve files (not in node/electron)
-* 		hmr: 		hot module replacement (electron/html)
-*		watch: 		watch for source modifications
-*		monitor=<file>:	monitor for file modification (node)
-*
-*		create name=<project name> model=<html, electron or node> <overwrite>
-*
-*	example:
-*		npx x4build node monitor=main.js
-*		npx create name="test" model="electron"
-*
-*
-*	package.json
-*		x4build: {
-			"preBuild": ["echo 'build starting'"],
-*			"postBuild": [ "cp -ra ${srcdir}/assets/* ${outdir}", "command line2"],		// ${srcdir}, ${outdir} are recognized
-*			"external": [ "better-sqlite3" ],					// don't bundle these elements (you must use npm install for them in the dist folder)
-			"publicPath": "public/path",						// public path for resbuild
-*		}
-*
-*	tsconfig.json
-*		compilerOptions: {
-*			outDir: "../../dist",
-*		}
 **/
 
-import chalk from 'chalk';
-import { execSync, spawn, spawnSync } from "child_process";
-import * as chokidar from 'chokidar';
-import * as http from 'http';
 import * as path from 'path';
 import * as fs from 'fs';
-import WS from 'faye-websocket';
+import * as http from 'http';
+
+import colors from "ansi-colors"
+import { execSync, spawn, spawnSync } from "child_process";
+import { program } from 'commander'
+
+import * as chokidar from 'chokidar';
+
+//import WS from 'faye-websocket';
 import downloadUrl from "download";
 
 import esbuild from 'esbuild';
@@ -55,40 +29,25 @@ import { lessLoader } from 'esbuild-plugin-less';
 
 const runningdir = path.resolve( );
 
+function logn( ...args ) {
 
+	let n=0;
+	let last;
 
-
-
-
-
-
-/**
- * command line parsing
- */
-
-
- const args = new class {
-	args = process.argv.slice(2);
-
-	has(what) {
-		return this.args.some(a => a.startsWith(what));
-	}
-
-	get count( ) {
-		return this.args.length;
-	}
-
-	getValue(what) {
-		const index = this.args.findIndex(a => a.startsWith(what));
-		if (index < 0) return undefined;
-
-		const [arg, value] = this.args[index].split("=");
-		return value;
+	for( const x of args ) {
+		if( n ) {
+			process.stdout.write( ' ' );
+		}
+		process.stdout.write( x )
+		last = x;
+		n++;
 	}
 }
 
-
-
+function log( ...args ) {
+	logn( ...args );
+	process.stdout.write( "\n" );
+}
 
 function loadJSON( fname ) {
 	let raw_json = fs.readFileSync( fname, { encoding: "utf-8" });
@@ -100,8 +59,8 @@ function loadJSON( fname ) {
 		return JSON.parse(raw_json);
 	}
 	catch( e ) {
-		log( chalk.red( `cannot parse ${fname}.`) );
-		log( chalk.white( raw_json ) );
+		log( colors.red( `cannot parse ${fname}.`) );
+		log( colors.white( raw_json ) );
 		process.exit( -1 );
 	}
 }
@@ -111,53 +70,56 @@ function writeJSON( fname, json ) {
 	fs.writeFileSync( fname, raw_json, { encoding: "utf-8" });
 }
 
-function log(...message) {
-	console.info(...message);
-}
+program.name( 'x4build' )
+	.version( '1.5.4' );
+
+program.command( 'create' )
+		.description( 'create a new project' )
+		.argument( 'name', 'project name' )
+		.option( '--type <type>', 'project type - one of "html", "node", "electron" or "server"' )
+		.option('--overwrite', 'allow creation of projet folder even if the folder exists' )
+		.action( create )
+
+program.command( "build" )
+		.description( 'build the project' )
+		.option( '--type <type>', 'project type - one of "html", "node", "electron"' )
+		.option( '--release', 'release mode' )
+		.option('--serve', 'start a http server (only html mode)' )
+		.option('--hmr', 'handle Hot Module Replacement (hml and electron mode)' )
+		.option('--watch', 'rebuild when source change' )
+		.option('--monitor [path]', 'restart node when build done (node mode)' )
+		.action( build )
+
+program.parse();
 
 
-function usage( ) {
-	console.log( `
-${chalk.yellow('x4build <project type> <mode> serve hmr watch monitor=path')}
-build the project
+// :: CREATE ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
-where:
-    project type:   node | electron | html*
-    mode:           release | debug*
-    serve:          serve file (only html)
-    hmr:			hot module replacement (.ts,.js,.css)
-    watch:          watch source modifications
-    monitor: 		extra path to monitor
+async function create( name, options ) {
 
-- OR -
+	const model = options.type;
+	
+	switch( model ) {
+		case "html":
+		case "node":
+		case "electron":
+		case "server":
+			break;
 
-${chalk.green('x4buid create name=<project_name> model=<project type> override')}
-
-create a new project named <project name>
-
-where:
-    project type:   node | electron | html
-    override:       if not set, do not overwrite existing folder
-`)
-
-	process.exit( 0 );
-}
-
-if( args.has('help') || !args.count ) {
-	usage( );
-}
-
-
-if( args.has("create") ) {
+		default: {
+			log( "type must be html, node or electron" );
+			return process.exit( -1 );
+		}
+	}
 
 	log("\n");
-	log(chalk.cyan.bold(" :: NEW PROJECT ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::"));	
+	log(colors.cyan.bold(" :: NEW PROJECT ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::"));	
 
-	async function create( name, url, model ) {
+	async function create( url ) {
 
 		const real = path.resolve( name );
-		if( !args.has("overwrite") && fs.existsSync(real) ) {
-			log( chalk.red(`Cannot overwrite ${real}.`) );
+		if( !options.overwrite && fs.existsSync(real) ) {
+			log( colors.red(`Cannot overwrite ${real}.`) );
 			process.exit( -1 );
 		}
 		
@@ -171,10 +133,10 @@ if( args.has("create") ) {
 		}
 
 		try {
-			log( chalk.yellow("get files..."))
+			log( colors.yellow("get files..."))
 			await downloadUrl(url, real, downloadOptions);
 			
-			log( chalk.yellow("setup project..."));
+			log( colors.yellow("setup project..."));
 
 			// update package.json
 			const pkgname = path.join(real,"package.json");
@@ -185,16 +147,16 @@ if( args.has("create") ) {
 			switch( model ) {
 				case "html": {
 					pkg.scripts = {
-						"build-dev": "x4build html debug watch hmr serve",
-						"build-release": "x4build html release",
+						"build-dev": "x4build --type=html --watch --serve",
+						"build-release": "x4build --type=html --release",
 					};
 					break;
 				}
 
 				case "electron": {
 					pkg.scripts = {
-						"build-dev": "x4build electron debug watch hmr",
-						"build-release": "x4build electron release",
+						"build-dev": "x4build --type=electron --watch",
+						"build-release": "x4build --type=electron release",
 					};
 
 					break;
@@ -202,8 +164,16 @@ if( args.has("create") ) {
 
 				case "node": {
 					pkg.scripts = {
-						"build-dev": "x4build node debug monitor=main.js",
-						"build-release": "x4build node release",
+						"build-dev": "x4build --type=node --monitor",
+						"build-release": "x4build --type=node --release",
+					};
+					break;
+				}
+
+				case "server": {
+					pkg.scripts = {
+						"build-dev": "x4build --type=node --monitor",
+						"build-release": "x4build --type=node --release",
 					};
 					break;
 				}
@@ -211,427 +181,458 @@ if( args.has("create") ) {
 
 			writeJSON( pkgname, pkg );
 
+			log( colors.yellow("installing dependencies..."));
 			spawnSync( "npm i", {
 				cwd: real,
 				shell: true,
 				stdio: "inherit"
 			} )
 
-			log( chalk.bgGreen.white("\n:: done ::") )
+			log( colors.bgGreen.white("\n:: done ::") )
 
-			execSync( "code .", { cwd: real });
+			if( process.platform=="win32" ) {
+				execSync( "code .", { cwd: real });
+			}
 		}
 		catch( err ) {
-			log( chalk.red(err) );
+			log( colors.red(err) );
 			process.exit( -1 );
 		}
 	}
 
-	const name = args.getValue( "name" );
-	if( !name ) {
-		usage( );
-	}
+	await create( `https://github.com/rlibre/template-${model}/archive/refs/heads/main.zip` );
+}
 
-	const model = args.getValue( "model" );
-	let mpath = null;
+// :: BUILD ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
-	switch( model ) {
-		case "html": {
-			mpath = "https://github.com/rlibre/template/archive/refs/heads/main.zip";
-			break;
-		}
+async function build( options ) {
 
-		case "node": {
-			mpath = "https://github.com/rlibre/template-node/archive/refs/heads/main.zip";
-			break;
-		}
+	const pkg = loadJSON( "package.json");
+	const tscfg = loadJSON( "tsconfig.json" );
 
-		case "electron": {
-			mpath = "https://github.com/rlibre/template-electron/archive/refs/heads/main.zip";
-			break;
-		}
+	const type = options.type;
 
-		default: {
-			usage( );
-			break;
-		}
-	}
+	const is_node = type=="node";
+	const is_electron = type=="electron";
+
+	const release = options.release ?? false;
+	const watch = options.watch ?? false;
+	const serve_files = options.serve ?? false;
+	const need_hmr = options.hmr  ?? false;
+	const outdir = path.resolve( tscfg?.compilerOptions?.outDir ?? "./bin" );
+
+	let monitor = options.monitor;
+	//if (monitor!==false && monitor!==true ) {
+	//	monitor = path.resolve(path.join(outdir, monitor));
+	//	
+	//}
+
+	logn( "\u001b[2J" )
 	
-	await create( name, mpath );
-	process.exit( 0 );
-}
+	log(colors.cyan("::")+colors.white(" X4BUILD ")+colors.cyan("::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::\n"));
 
+	log(colors.green("type.........: "), colors.white(is_node ? "node" : (is_electron ? "electron" : "html")) );
+	log(colors.green("entry point..: "), colors.white(pkg.main ) );
+	log(colors.green("outdir.......: "), colors.white(outdir) );
+	log(colors.green("watch........: "), colors.white(watch ? "yes" : "no") );
+	log(colors.green("mode.........: "), colors.white(release ? "release" : "debug") );
+	log(colors.green("serve........: "), colors.white(serve_files ? "yes" : "no") );
+	log(colors.green("hmr..........: "), colors.white(need_hmr ? "yes" : "no") );
+	log(colors.green("monitor......: "), colors.white(monitor ? "yes" : "no") );
 
+	log(colors.cyan.bold("\n:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::\n"));
+	const node_plugins = [
+	];
 
+	const html_plugins = [
+		htmlPlugin(),
+		lessLoader({
+			rootpath: ".",
+		})
+	]
 
+	const runAction = ( actionName ) => {
+		let tasks = pkg.x4build[actionName];
+		if( !Array.isArray(tasks) ) {
+			tasks = [tasks];
+		}
 
+		tasks.forEach( task => {
+			task = task.replaceAll( /\$\{\w*outdir\w*\}/ig, path.resolve(outdir) );
+			task = task.replaceAll( /\$\{\w*srcdir\w*\}/ig, path.resolve(runningdir) );
 
-const pkg = loadJSON( "package.json");
-const tscfg = loadJSON( "tsconfig.json" );
-
-const is_node = args.has('node');
-const is_electron = args.has('electron');
-
-const release = args.has('release');
-const watch = args.has('watch');
-const serve_files = args.has("serve");
-const need_hmr = args.has("hmr");
-const outdir = path.resolve( tscfg?.compilerOptions?.outDir ?? "./bin" );
-
-let monitor = args.getValue("monitor");
-if (monitor) {
-	monitor = path.resolve(path.join(outdir, monitor));
-}
-
-
-
-
-log("\n".repeat(20));
-
-log(chalk.green("type....: "), is_node ? "node" : (is_electron ? "electron" : "html"));
-log(chalk.green("outdir..: "), outdir);
-log(chalk.green("watch...: "), watch ? "yes" : "no");
-log(chalk.green("mode....: "), release ? "release" : "debug");
-log(chalk.green("serve...: "), serve_files ? "yes" : "no");
-log(chalk.green("hmr.....: "), need_hmr ? "yes" : "no");
-log(chalk.green("monitor.: "), monitor ? "yes" : "no");
-
-
-log("\n");
-log(chalk.cyan.bold(" :: BUILDING ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::"));
-
-const node_plugins = [];
-
-const html_plugins = [
-	htmlPlugin(),
-	lessLoader({
-		rootpath: ".",
-	})
-]
-
-const runAction = ( actionName ) => {
-	let tasks = pkg.x4build[actionName];
-	if( !Array.isArray(tasks) ) {
-		tasks = [tasks];
-	}
-
-	tasks.forEach( task => {
-		task = task.replaceAll( /\$\{\w*outdir\w*\}/ig, path.resolve(outdir) );
-		task = task.replaceAll( /\$\{\w*srcdir\w*\}/ig, path.resolve(runningdir) );
-
-		log( "> ", task );
-		
-		const ret = spawnSync( task, {
-			cwd: runningdir,
-			shell: true,
-			stdio: "inherit"
+			log( "> ", task );
+			
+			const ret = spawnSync( task, {
+				cwd: runningdir,
+				shell: true,
+				stdio: "inherit"
+			} );
 		} );
-	} );
-}
-
-
-
-const onRebuild = (error, result) => {
-	if (error) {
-		log('watch build failed:', error);
 	}
-	else {
+
+	class Timer {
+		
+		start( cb, tmo ) {
+			if( this.tm ) {
+				clearTimeout( this.tm );
+			}
+			
+			this.tm = setTimeout( cb, tmo );
+		}
+	}
+
+
+	const minify = pkg.x4build?.minify ?? (release ? true : false);
+	const sourcemap = pkg.x4build?.sourcemap ?? (release ? false : "inline");
+
+	let started = false;
+	function __start( ) {
+
+		if( started ) 
+			return;
+
+		started = true;
+
+		logn( "\u001b[2H" );
+		if (pkg?.x4build?.preBuild ) {
+			log( colors.green( colors.symbols.check )+colors.white(' pre build'));
+			runAction( "preBuild" );
+		}
+	}
+
+	const tmEnd = new Timer( );
+	function __done( ) {
+
+		// -- post build actions --------------------------------------
+		logn( "\u001b[2H" );
 		if (pkg?.x4build?.postBuild ) {
-			log('... calling post build action ...');
-			runAction( "postBuild" );
-		}
-	}
-}
-
-if (pkg?.x4build?.preBuild ) {
-	log('... calling pre build action ...');
-	runAction( "preBuild" );
-}
-
-await esbuild.build({
-	logLevel: "info",
-	entryPoints: [ /*"src/index.html"*/pkg.main],
-	outdir,
-	bundle: true,
-	sourcemap: release ? false : "inline",
-	minify: release ? true : false,
-	keepNames: true,
-	target: (is_node || is_electron) ? "node16" : "esnext",
-	watch: (watch || (monitor ? true : false)) ? { onRebuild } : false,
-	charset: "utf8",
-	// for now there is a problem with htmlplugin, i have created an issue
-	// assetNames: 'assets/[name]',
-	// chunkNames: 'assets/[name]',
-	publicPath: pkg?.x4build?.publicPath,
-	legalComments: "none",
-	platform: (is_node || is_electron) ? "node" : "browser",
-	format: "iife",
-	incremental: watch,
-	define: {
-		DEBUG: !release
-	},
-	plugins: is_node ? node_plugins : html_plugins,
-	external: is_electron ? ["electron"] : pkg.x4build?.external,
-	allowOverwrite: true,
-	loader: {
-		'.png': 'file',
-		'.svg': 'file',
-		'.json': 'json',
-		'.ttf': 'dataurl',
-	}
-});
-
-if (pkg?.x4build?.postBuild ) {
-	log('... calling post build action ...');
-	runAction( "postBuild" );
-}
-
-if (is_node) {
-	if (monitor) {
-		log(chalk.cyan.bold("\n :: MONITOR :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::"));
-
-		let isReady = false;
-		let updateTmo = undefined;
-
-		function startProcess() {
-
-			log(chalk.green(`\nstarting process ${monitor}`));
-
-			process.chdir(outdir);
-
-			let proc = spawn("node", [monitor], {
-				stdio: 'inherit'
-			});
-			proc.on("exit", (code) => {
-				log(chalk.red(`process exit with code ${code}.`));
-				proc.__destroyed = true;
-			});
-			proc.on("error", (code) => {
-				log(chalk.red(`process crash with code ${code}.`));
-				proc.__destroyed = true;
-			})
-
-			return proc;
+			log( colors.green( colors.symbols.check)+colors.white(' post build'));
+			runAction( "postBuild" );	
 		}
 
-		let proc = startProcess();
+		// -- monitor -------------------------------------------------
 
-		function handleChange(changePath) {
-			if (!isReady) {
-				return;
+		const startProcess = () => {
+
+			console.log(colors.green(`starting process bin/index.js`));
+			try {
+				process.chdir(path.join(root_dir,outdir));
+				const proc = spawn("node", ["index.js"], {
+					stdio: 'inherit',
+					stderr: 'inherit',
+				});
+				
+				proc.on("exit", (code) => {
+					console.log(colors.red(`process exit with code ${code}.`));
+					proc.__destroyed = true;
+				});
+
+				proc.on("error", (code) => {
+					console.log(colors.red(`process crash with code ${code}.`));
+					proc.__destroyed = true;
+				})
+
+				return proc;
+			}
+			catch( e ) {
+				console.log( colors.bgRed.white("error: "+e.message))
+				return null;
+			}
+			
+		}
+
+		if( options.run ) {
+			if( cache.proc && !cache.__destroyed) {
+				process.kill(cache.proc.pid, "SIGTERM");
+			}
+			
+			cache.proc = startProcess( );
+		}	
+
+		if (!(pkg?.x4build?.postBuild) ) {
+			log( colors.green( colors.symbols.check)+colors.white(' build done'));
+		}
+
+		started = false;
+	}
+
+	const buildDonePlugin = {
+		name: 'done',
+		
+		setup(build) {
+			build.onStart( __start );
+			build.onEnd( ( args ) => {
+				tmEnd.start( __done, 200 );
+			} );
+		}
+	}
+
+
+
+	const ctx = await esbuild.context({
+		logLevel: "warning",
+		entryPoints: [pkg.main],
+		outdir,
+		bundle: true,
+		sourcemap,
+		minify,
+		keepNames: true,
+		target: (is_node || is_electron) ? "node18" : "esnext",
+		charset: "utf8",
+		// for now there is a problem with htmlplugin, i have created an issue
+		// assetNames: 'assets/[name]',
+		// chunkNames: 'assets/[name]',
+		publicPath: pkg?.x4build?.publicPath,
+		legalComments: "none",
+		platform: (is_node || is_electron) ? "node" : "browser",
+		format: "iife",
+		define: release ? {
+		}:
+		{ DEBUG: "1"
+		},
+		external: is_electron ? ["electron"] : pkg.x4build?.external,
+		//allowOverwrite: true,
+		loader: {
+			'.png': 'file',
+			'.svg': 'file',
+			'.json': 'json',
+			'.ttf': 'dataurl',
+		},
+		plugins: [
+			...(is_node ? node_plugins : html_plugins),
+			buildDonePlugin
+		],
+	});
+
+	//if( options.watch ) {
+	//	ctx.watch( );
+	//	log(colors.white(`watching for sources modifications`));
+	//}
+	
+	if( serve_files || need_hmr || watch ) {
+		
+		const port = 9876;
+		const host = '127.0.0.1';
+		let http_server = null;
+
+		function createServer() {
+
+			if (http_server) {
+				return http_server;
 			}
 
-			if (updateTmo) {
-				clearTimeout(updateTmo);
-			}
+			http_server = http.createServer({});
+			http_server.listen(port, host);
 
-			updateTmo = setTimeout(() => {
-				log(chalk.green("monitored file change, restarting"));
-				if (!proc.__destroyed) {
-					process.kill(proc.pid, "SIGTERM");
-				}
-
-				proc = startProcess();
-			}, 1000);
-		}
-
-		const watcher = chokidar.watch(outdir);
-		watcher
-			.on("change", handleChange)
-			.on("add", handleChange)
-			.on("unlink", handleChange)
-			.on("addDir", handleChange)
-			.on("unlinkDir", handleChange)
-			.on("ready", function () {
-				isReady = true;
-			})
-			.on("error", function (err) {
-				console.log("ERROR:", err);
-			});
-
-		console.log("Monitoring started.");
-	}
-}
-else {
-
-	const port = 9876;
-	const host = '127.0.0.1';
-	let http_server = null;
-
-	function createServer() {
-
-		if (http_server) {
 			return http_server;
 		}
+		
+		//------------------------------------------------------------------------
 
-		http_server = http.createServer({});
-		http_server.listen(port, host);
+		if ( need_hmr ) {
+			
+			const watcher = chokidar.watch( [outdir], {
+				ignored: [
+					/.*\.map$/ 
+				]
+			});
 
-		return http_server;
-	}
+			let clients = [];
+			const wait = 2000;
 
-	if (need_hmr) {
-		log(chalk.cyan.bold(" :: HMR :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::"));
+			const server = createServer();
 
-		const watcher = chokidar.watch( [outdir], {
-			ignored: [
-				/.*\.map$/ 
-			]
-		});
+			let waitTimeout;
+			const send = (client, ...args) => {
+				if (waitTimeout) {
+					clearTimeout(waitTimeout);
+				}
 
-		let clients = [];
-		const wait = 2000;
-
-		const server = createServer();
-
-		let waitTimeout;
-		const send = (client, ...args) => {
-			if (waitTimeout) {
-				clearTimeout(waitTimeout);
+				waitTimeout = setTimeout(function () {
+					client.send(...args);
+				}, wait);
 			}
 
-			waitTimeout = setTimeout(function () {
-				client.send(...args);
-			}, wait);
-		}
+			server.addListener('upgrade', function (request, socket, head) {
 
-		server.addListener('upgrade', function (request, socket, head) {
-
-			let ws = new WS.WebSocket(request, socket, head);
-			ws.onopen = () => {
-				console.log("client connected");
-				send(ws, 'connected');
-			};
+				let ws = new WS.WebSocket(request, socket, head);
+				ws.onopen = () => {
+					log("client connected");
+					send(ws, 'connected');
+				};
 
 
-			ws.onclose = function () {
-				clients = clients.filter(function (x) {
-					return x !== ws;
+				ws.onclose = function () {
+					clients = clients.filter(function (x) {
+						return x !== ws;
+					});
+				};
+
+				clients.push(ws);
+			});
+
+			let isReady = false;
+			let tmDisp = new Timer( );
+
+			function handleChange(changePath) {
+
+				if (!isReady) {
+					return;
+				}
+
+				let cssChange = [".css", ".jpg", ".png", ".svg", ".ttf", ".otf" ].indexOf(path.extname(changePath))>=0;
+				let notified = false;
+
+				clients.forEach((c) => {
+					send(c, cssChange ? 'refreshcss' : 'reload');
 				});
-			};
 
-			clients.push(ws);
-		});
-
-		let isReady = false;
-
-		function handleChange(changePath) {
-
-			if (!isReady) {
-				return;
+				tmDisp.start( ( ) => {
+					log(colors.green(colors.symbols.pencilDownRight)+colors.white(" changes detected, hmr updated") );
+				}, 300 );
 			}
 
-			let cssChange = [".css", ".jpg", ".png", ".svg", ".ttf", ".otf" ].indexOf(path.extname(changePath))>=0;
-			let notified = false;
+			watcher
+				.on("change", handleChange)
+				.on("add", handleChange)
+				.on("unlink", handleChange)
+				.on("addDir", handleChange)
+				.on("unlinkDir", handleChange)
+				.on("ready", function () {
+					isReady = true;
+				})
+				.on("error", function (err) {
+					log("ERROR:", err);
+				});
 
-			clients.forEach((c) => {
-				if (!notified) {
-					log(chalk.yellow("HMR"), chalk.green("change detected"), changePath);
-					notified = true;
+				log(colors.green( colors.symbols.check)+colors.white(` HMR started`));
+		}
+		
+		//------------------------------------------------------------------------
+
+		if (serve_files && !is_electron) {
+
+			const srv = createServer();
+			srv.addListener("request", (req, res) => {
+
+				// We can't return a promise in a HTTP request handler, so we run our code
+				// inside an async function instead.
+				const run = async () => {
+
+					// Log the request.
+					const requestTime = new Date();
+					const formattedTime = `${requestTime.toLocaleDateString()} ${requestTime.toLocaleTimeString()}`;
+					const ipAddress = req.socket.remoteAddress?.replace('::ffff:', '') ?? 'unknown';
+					const requestUrl = `${req.method ?? 'GET'} ${req.url ?? '/'}`;
+
+					log(colors.dim(formattedTime), colors.yellow(ipAddress), colors.cyan(requestUrl));
+
+					//response.setHeader('Access-Control-Allow-Origin', '*');
+
+					const url = new URL(req.url, "file://");
+					let relativePath = decodeURIComponent(url.pathname);
+
+					if (relativePath == "/") {
+						relativePath = "/index.html";
+					}
+
+					const absolutePath = path.join(outdir, relativePath);
+
+					try {
+						const stat = fs.statSync(absolutePath);
+						if (stat.isFile()) {
+
+							const mimes = {
+								'.htm': 'text/html',
+								'.html': 'text/html',
+								'.css': 'text/css',
+								'.js': 'application/javascript',
+								'.json': 'application/json',
+							};
+
+
+							const ext = path.extname(absolutePath);
+
+							let headers = {
+								'Content-Length': stat.size,
+							};
+
+							if (mimes[ext]) {
+								headers['Content-Type'] = mimes[ext];
+							}
+
+							res.writeHead(200, headers);
+
+							const stream = fs.createReadStream(absolutePath);
+							stream.pipe(res);
+						}
+						else {
+							throw "Invalid path";
+						}
+					}
+					catch (e) {
+						res.statusCode = 404;
+						res.end();
+					}
+
+
+					// Before returning the response, log the status code and time taken.
+					const responseTime = Date.now() - requestTime.getTime();
+					log(colors.dim(formattedTime), colors.yellow(ipAddress), colors[res.statusCode == 200 ? "green" : "red"](`Returned ${res.statusCode} in ${responseTime} ms`));
 				}
 
-				send(c, cssChange ? 'refreshcss' : 'reload');
+				// Then we run the async function, and re-throw any errors.
+				run().catch((error) => {
+					throw error;
+				});
 			});
+
+			log(colors.green( colors.symbols.check)+colors.white(` server listening on http://${host}:${port}`));
 		}
 
-		watcher
-			.on("change", handleChange)
-			.on("add", handleChange)
-			.on("unlink", handleChange)
-			.on("addDir", handleChange)
-			.on("unlinkDir", handleChange)
-			.on("ready", function () {
-				isReady = true;
-			})
-			.on("error", function (err) {
-				console.log("ERROR:", err);
+		if( watch ) {
+			const watch_path = path.dirname( pkg.main );
+
+			const watcher = chokidar.watch( [watch_path], {
+				ignored: [
+					/.*\.map$/ 
+				]
 			});
 
-		console.log("HMR started.");
-	}
+			let isReady = false;
+			let tmRebuild = new Timer( );
 
+			function handleChange(changePath) {
 
-	if (serve_files && !is_electron) {
-
-		log(chalk.cyan.bold(" :: SERVER ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::"));
-
-		const srv = createServer();
-		srv.addListener("request", (req, res) => {
-
-			// We can't return a promise in a HTTP request handler, so we run our code
-			// inside an async function instead.
-			const run = async () => {
-
-				// Log the request.
-				const requestTime = new Date();
-				const formattedTime = `${requestTime.toLocaleDateString()} ${requestTime.toLocaleTimeString()}`;
-				const ipAddress = req.socket.remoteAddress?.replace('::ffff:', '') ?? 'unknown';
-				const requestUrl = `${req.method ?? 'GET'} ${req.url ?? '/'}`;
-
-				console.log(chalk.dim(formattedTime), chalk.yellow(ipAddress), chalk.cyan(requestUrl));
-
-				//response.setHeader('Access-Control-Allow-Origin', '*');
-
-				const url = new URL(req.url, "file://");
-				let relativePath = decodeURIComponent(url.pathname);
-
-				if (relativePath == "/") {
-					relativePath = "/index.html";
+				if (!isReady) {
+					return;
 				}
 
-				const absolutePath = path.join(outdir, relativePath);
-
-				try {
-					const stat = fs.statSync(absolutePath);
-					if (stat.isFile()) {
-
-						const mimes = {
-							'.htm': 'text/html',
-							'.html': 'text/html',
-							'.css': 'text/css',
-							'.js': 'application/javascript',
-							'.json': 'application/json',
-						};
-
-
-						const ext = path.extname(absolutePath);
-
-						let headers = {
-							'Content-Length': stat.size,
-						};
-
-						if (mimes[ext]) {
-							headers['Content-Type'] = mimes[ext];
-						}
-
-						res.writeHead(200, headers);
-
-						const stream = fs.createReadStream(absolutePath);
-						stream.pipe(res);
-					}
-					else {
-						throw "Invalid path";
-					}
-				}
-				catch (e) {
-					res.statusCode = 404;
-					res.end();
-				}
-
-
-				// Before returning the response, log the status code and time taken.
-				const responseTime = Date.now() - requestTime.getTime();
-				console.log(chalk.dim(formattedTime), chalk.yellow(ipAddress), chalk[res.statusCode == 200 ? "green" : "red"](`Returned ${res.statusCode} in ${responseTime} ms`));
+				tmRebuild.start( ( ) => {
+					ctx.rebuild( );
+				}, 1000 );
 			}
 
-			// Then we run the async function, and re-throw any errors.
-			run().catch((error) => {
-				throw error;
-			});
-		});
+			watcher
+				.on("change", handleChange)
+				.on("add", handleChange)
+				.on("unlink", handleChange)
+				.on("addDir", handleChange)
+				.on("unlinkDir", handleChange)
+				.on("ready", function () {
+					isReady = true;
+				})
+				.on("error", function (err) {
+					log("ERROR:", err);
+				});
 
-		log(chalk.white(`server is listening on http://${host}:${port}`));
+				log(colors.green( colors.symbols.check)+colors.white(` watching for modifications on ${path.resolve(watch_path)}` ) );
+		}
 	}
-}
 
+	log(colors.cyan.bold("\n:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::\n"));
+
+	ctx.rebuild( );
+}
 

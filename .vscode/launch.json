@@ -1,0 +1,31 @@
+{
+	// Use IntelliSense to learn about possible attributes.
+	// Hover to view descriptions of existing attributes.
+	// For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"type": "node",
+			"request": "launch",
+			"name": "Create",
+			"skipFiles": [
+				"<node_internals>/**"
+			],
+			"program": "${workspaceFolder}\\x4build.mjs",
+			"args": [ "create", "--type=html", "--overwrite", "toto" ],
+			"outputCapture": "std"
+		},
+		{
+			"type": "node",
+			"request": "launch",
+			"name": "Build",
+			"skipFiles": [
+				"<node_internals>/**"
+			],
+			"cwd": "${workspaceFolder}\\toto",
+			"program": "${workspaceFolder}\\x4build.mjs",
+			"args": [ "build", "--type=html", "--serve", "--hmr", "--watch" ],
+			"outputCapture": "std"
+		}
+	]
+}
