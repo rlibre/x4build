@@ -12,7 +12,7 @@
 				"<node_internals>/**"
 			],
 			"program": "${workspaceFolder}\\x4build.mjs",
-			"args": [ "create", "--type=html", "--overwrite", "toto" ],
+			"args": [ "create", "--type=node", "--overwrite", "toto" ],
 			"outputCapture": "std"
 		},
 		{

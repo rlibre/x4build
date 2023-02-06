@@ -71,7 +71,7 @@ function writeJSON( fname, json ) {
 }
 
 program.name( 'x4build' )
-	.version( '1.5.4' );
+	.version( '1.5.5' );
 
 program.command( 'create' )
 		.description( 'create a new project' )
@@ -112,8 +112,8 @@ async function create( name, options ) {
 		}
 	}
 
-	log("\n");
-	log(colors.cyan.bold(" :: NEW PROJECT ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::"));	
+	logn( "\u001b[2J" )
+	log(colors.cyan(":: new project ")+colors.white(name)+colors.cyan(" ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::\n"));	
 
 	async function create( url ) {
 
@@ -133,66 +133,92 @@ async function create( name, options ) {
 		}
 
 		try {
-			log( colors.yellow("get files..."))
+			log( colors.green(colors.symbols.pointer)+colors.white(" getting files..."))
 			await downloadUrl(url, real, downloadOptions);
 			
-			log( colors.yellow("setup project..."));
+			log( colors.green(colors.symbols.pointer)+colors.white(" setup project..."))
 
 			// update package.json
-			const pkgname = path.join(real,"package.json");
-			const pkg = loadJSON( pkgname );
-			pkg.name = name;
-			pkg.description = `${name} project`
-
+			function update_pkg( pkgname, name, debug, release ) {
+				const pkg = loadJSON( pkgname );
+				pkg.name = name;
+				pkg.description = `${name} project`
+				pkg.scripts = {
+					"build-dev": "x4build "+debug,
+					"build-release": "x4build "+release,
+				};
+				writeJSON( pkgname, pkg );
+			}
+			
 			switch( model ) {
 				case "html": {
-					pkg.scripts = {
-						"build-dev": "x4build --type=html --watch --serve",
-						"build-release": "x4build --type=html --release",
-					};
+					update_pkg( path.join(real,"package.json"), name, 
+						"--type=html --watch --serve", 
+						"--type=html --release" );
 					break;
 				}
 
 				case "electron": {
-					pkg.scripts = {
-						"build-dev": "x4build --type=electron --watch",
-						"build-release": "x4build --type=electron release",
-					};
+					update_pkg( path.join(real,"package.json"), name, 
+						"--type=electron --watch", 
+						"--type=electron --release" );
 
 					break;
 				}
 
 				case "node": {
-					pkg.scripts = {
-						"build-dev": "x4build --type=node --monitor",
-						"build-release": "x4build --type=node --release",
-					};
+					update_pkg( path.join(real,"package.json"), name, 
+						"--type=node --watch --monitor", 
+						"--type=node --release" );
+
 					break;
 				}
 
 				case "server": {
-					pkg.scripts = {
-						"build-dev": "x4build --type=node --monitor",
-						"build-release": "x4build --type=node --release",
-					};
+					update_pkg( path.join(real,"src","server","package.json"), name, 
+						"--type=node --watch --monitor", 
+						"--type=node --release" );
+
+					update_pkg( path.join(real,"src","client","package.json"), name, 
+						"--type=html --watch --hmr", 
+						"--type=html --release" );
+
 					break;
 				}
 			}
 
-			writeJSON( pkgname, pkg );
+			if( model=="server" ) {
+				log( colors.green(colors.symbols.pointer)+colors.white(" installing dependencies 1/2..."))
+				spawnSync( "npm i", {
+					cwd: path.join(real,"src","server"),
+					shell: true,
+					stdio: "inherit",
+					stderr: "inherit",
+				} )
 
-			log( colors.yellow("installing dependencies..."));
-			spawnSync( "npm i", {
-				cwd: real,
-				shell: true,
-				stdio: "inherit"
-			} )
-
-			log( colors.bgGreen.white("\n:: done ::") )
-
-			if( process.platform=="win32" ) {
-				execSync( "code .", { cwd: real });
+				log( colors.green(colors.symbols.pointer)+colors.white(" installing dependencies 2/2..."))
+				spawnSync( "npm i", {
+					cwd: path.join(real,"src","client"),
+					shell: true,
+					stdio: "inherit",
+					stderr: "inherit",
+				} )
 			}
+			else {
+				log( colors.green(colors.symbols.pointer)+colors.white(" installing dependencies..."))
+				spawnSync( "npm i", {
+					cwd: real,
+					shell: true,
+					stdio: "inherit",
+					stderr: "inherit",
+				} )
+			}
+
+			//if( process.platform=="win32" ) {
+			//	execSync( "code .", { cwd: real });
+			//}
+
+			log( colors.green(colors.symbols.heart)+colors.white(" project is READY..."))
 		}
 		catch( err ) {
 			log( colors.red(err) );
