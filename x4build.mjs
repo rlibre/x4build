@@ -20,9 +20,8 @@ import { execSync, spawn, spawnSync } from "child_process";
 import { program } from 'commander'
 
 import * as chokidar from 'chokidar';
-
-//import WS from 'faye-websocket';
-//import gitly from 'gitly'
+import * as tar from 'tar';
+import WS from 'faye-websocket';
 
 import esbuild from 'esbuild';
 import htmlPlugin from '@chialab/esbuild-plugin-html';
@@ -72,7 +71,7 @@ function writeJSON( fname, json ) {
 }
 
 program.name( 'x4build' )
-	.version( '1.5.6' );
+	.version( '1.5.7' );
 
 program.command( 'create' )
 		.description( 'create a new project' )
@@ -129,9 +128,9 @@ async function create( name, options ) {
 				}
 				else {
 					const data = await rc.arrayBuffer( );
-					const output = path.join( os.tmpdir, "x4build-"+Date.now().toString()+".zip" );
-					fs.writeFileSync( output, data );
-					resolve( output );
+					const output = path.join( os.tmpdir(), "x4build-"+Date.now().toString()+".tar.gz" );
+					fs.writeFileSync( output, Buffer.from(data) );
+					return resolve( output );
 				}
 			}
 
@@ -139,6 +138,21 @@ async function create( name, options ) {
 		});
 	}
 
+	function extract( file, cwd ) {
+		return new Promise( async (resolve, reject ) => {
+			try {
+				await tar.extract(  {
+					file: file,
+					strip: 1,
+					cwd 
+				} );
+				resolve( );
+			}
+			catch( e ) {
+				reject( e );
+			}
+		});
+	}
 
 	async function create( url ) {
 
@@ -147,14 +161,15 @@ async function create( name, options ) {
 			log( colors.red(`Cannot overwrite ${real}, use --overwrite option.`) );
 			process.exit( -1 );
 		}
+		else {
+			fs.mkdirSync( real, {recursive:true} );
+		}
 		
 		try {
 			log( colors.green(colors.symbols.pointer)+colors.white(" getting files..."))
 
-			
-
 			const tar = await download( url );
-			//await gitly.extract( tar, real );
+			await extract( tar, real );
 			
 			log( colors.green(colors.symbols.pointer)+colors.white(" setup project..."))
 
@@ -246,8 +261,8 @@ async function create( name, options ) {
 		}
 	}
 
-	await create( `https://github.com/rlibre/template-${model}/archive/refs/heads/main.zip` );
-	//await create( `https://github.com/rlibre/template-${model}` );
+	//https://github.com/rlibre/template-node/tarball/master
+	await create( `https://github.com/rlibre/template-${model}/tarball/main` );
 }
 
 // :: BUILD ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::

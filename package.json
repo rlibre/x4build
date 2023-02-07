@@ -1,6 +1,6 @@
 {
   "name": "x4build",
-  "version": "1.5.6",
+  "version": "1.5.7",
   "description": "x4js solution builder, server and hmr, cli command line",
   "main": "x4build.mjs",
   "repository": {
@@ -26,6 +26,6 @@
     "esbuild": "^0.17.5",
     "esbuild-plugin-less": "^1.1.12",
     "faye-websocket": "^0.11.4",
-    "gitly": "^2.3.0"
+    "tar": "^6.1.13"
   }
 }
