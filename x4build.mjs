@@ -12,6 +12,7 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as http from 'http';
 
 import colors from "ansi-colors"
@@ -21,7 +22,7 @@ import { program } from 'commander'
 import * as chokidar from 'chokidar';
 
 //import WS from 'faye-websocket';
-import downloadUrl from "download";
+//import gitly from 'gitly'
 
 import esbuild from 'esbuild';
 import htmlPlugin from '@chialab/esbuild-plugin-html';
@@ -71,7 +72,7 @@ function writeJSON( fname, json ) {
 }
 
 program.name( 'x4build' )
-	.version( '1.5.5' );
+	.version( '1.5.6' );
 
 program.command( 'create' )
 		.description( 'create a new project' )
@@ -115,26 +116,45 @@ async function create( name, options ) {
 	logn( "\u001b[2J" )
 	log(colors.cyan(":: new project ")+colors.white(name)+colors.cyan(" ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::\n"));	
 
+
+	function download( url ) {
+		return new Promise( async (resolve, reject ) => {
+			for( let _try=0; _try<20; _try++ ) {
+				const rc = await fetch( url );
+				if( rc.status>=300 && rc.status<400 ) {
+					url = rc.headers.get("location");
+				}
+				else if( rc>=400 ) {
+					reject( new Error( rc.statusText ) );
+				}
+				else {
+					const data = await rc.arrayBuffer( );
+					const output = path.join( os.tmpdir, "x4build-"+Date.now().toString()+".zip" );
+					fs.writeFileSync( output, data );
+					resolve( output );
+				}
+			}
+
+			reject( new Error( "too many redirections" ) );
+		});
+	}
+
+
 	async function create( url ) {
 
 		const real = path.resolve( name );
 		if( !options.overwrite && fs.existsSync(real) ) {
-			log( colors.red(`Cannot overwrite ${real}.`) );
+			log( colors.red(`Cannot overwrite ${real}, use --overwrite option.`) );
 			process.exit( -1 );
 		}
 		
-		const downloadOptions = {
-			extract: true,
-			strip: 1,
-			mode: '666',
-			headers: {
-				accept: 'application/zip'
-			}
-		}
-
 		try {
 			log( colors.green(colors.symbols.pointer)+colors.white(" getting files..."))
-			await downloadUrl(url, real, downloadOptions);
+
+			
+
+			const tar = await download( url );
+			//await gitly.extract( tar, real );
 			
 			log( colors.green(colors.symbols.pointer)+colors.white(" setup project..."))
 
@@ -227,6 +247,7 @@ async function create( name, options ) {
 	}
 
 	await create( `https://github.com/rlibre/template-${model}/archive/refs/heads/main.zip` );
+	//await create( `https://github.com/rlibre/template-${model}` );
 }
 
 // :: BUILD ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -287,7 +308,7 @@ async function build( options ) {
 			task = task.replaceAll( /\$\{\w*outdir\w*\}/ig, path.resolve(outdir) );
 			task = task.replaceAll( /\$\{\w*srcdir\w*\}/ig, path.resolve(runningdir) );
 
-			log( "> ", task );
+			log( colors.green(colors.symbols.pointer)+colors.white( " "+task) );
 			
 			const ret = spawnSync( task, {
 				cwd: runningdir,
@@ -320,7 +341,6 @@ async function build( options ) {
 
 		started = true;
 
-		logn( "\u001b[2H" );
 		if (pkg?.x4build?.preBuild ) {
 			log( colors.green( colors.symbols.check )+colors.white(' pre build'));
 			runAction( "preBuild" );
@@ -331,7 +351,6 @@ async function build( options ) {
 	function __done( ) {
 
 		// -- post build actions --------------------------------------
-		logn( "\u001b[2H" );
 		if (pkg?.x4build?.postBuild ) {
 			log( colors.green( colors.symbols.check)+colors.white(' post build'));
 			runAction( "postBuild" );	
@@ -381,6 +400,9 @@ async function build( options ) {
 		}
 
 		started = false;
+		if( !options.watch && !options.monitor ) {
+			ctx.dispose( );
+		}
 	}
 
 	const buildDonePlugin = {
