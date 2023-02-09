@@ -349,12 +349,15 @@ async function build( options ) {
 	const sourcemap = pkg.x4build?.sourcemap ?? (release ? false : "inline");
 
 	let started = false;
+	let errors = 0;
+
 	function __start( ) {
 
 		if( started ) 
 			return;
 
 		started = true;
+		errors = 0;
 
 		if (pkg?.x4build?.preBuild ) {
 			log( colors.green( colors.symbols.check )+colors.white(' pre build'));
@@ -365,55 +368,59 @@ async function build( options ) {
 	const tmEnd = new Timer( );
 	function __done( ) {
 
-		// -- post build actions --------------------------------------
-		if (pkg?.x4build?.postBuild ) {
-			log( colors.green( colors.symbols.check)+colors.white(' post build'));
-			runAction( "postBuild" );	
-		}
-
-		// -- monitor -------------------------------------------------
-
-		const startProcess = () => {
-
-			console.log(colors.green(`starting process bin/index.js`));
-			try {
-				process.chdir(path.join(root_dir,outdir));
-				const proc = spawn("node", ["index.js"], {
-					stdio: 'inherit',
-					stderr: 'inherit',
-				});
+		if( !errors ) {
 				
-				proc.on("exit", (code) => {
-					console.log(colors.red(`process exit with code ${code}.`));
-					proc.__destroyed = true;
-				});
-
-				proc.on("error", (code) => {
-					console.log(colors.red(`process crash with code ${code}.`));
-					proc.__destroyed = true;
-				})
-
-				return proc;
+			// -- post build actions --------------------------------------
+			if (pkg?.x4build?.postBuild ) {
+				log( colors.green( colors.symbols.check)+colors.white(' post build'));
+				runAction( "postBuild" );	
 			}
-			catch( e ) {
-				console.log( colors.bgRed.white("error: "+e.message))
-				return null;
+
+			// -- monitor -------------------------------------------------
+
+			const startProcess = () => {
+
+				console.log(colors.green(`starting process bin/index.js`));
+				try {
+					process.chdir(path.join(root_dir,outdir));
+					const proc = spawn("node", ["index.js"], {
+						stdio: 'inherit',
+						stderr: 'inherit',
+					});
+					
+					proc.on("exit", (code) => {
+						console.log(colors.red(`process exit with code ${code}.`));
+						proc.__destroyed = true;
+					});
+
+					proc.on("error", (code) => {
+						console.log(colors.red(`process crash with code ${code}.`));
+						proc.__destroyed = true;
+					})
+
+					return proc;
+				}
+				catch( e ) {
+					console.log( colors.bgRed.white("error: "+e.message))
+					return null;
+				}
+				
 			}
-			
+
+			if( options.run ) {
+				if( cache.proc && !cache.__destroyed) {
+					process.kill(cache.proc.pid, "SIGTERM");
+				}
+				
+				cache.proc = startProcess( );
+			}	
+
+			if (!(pkg?.x4build?.postBuild) ) {
+				log( colors.green( colors.symbols.check)+colors.white(' build done'));
+			}
 		}
 
-		if( options.run ) {
-			if( cache.proc && !cache.__destroyed) {
-				process.kill(cache.proc.pid, "SIGTERM");
-			}
-			
-			cache.proc = startProcess( );
-		}	
-
-		if (!(pkg?.x4build?.postBuild) ) {
-			log( colors.green( colors.symbols.check)+colors.white(' build done'));
-		}
-
+		errors = 0;
 		started = false;
 		if( !options.watch && !options.monitor ) {
 			ctx.dispose( );
@@ -425,8 +432,20 @@ async function build( options ) {
 		
 		setup(build) {
 			build.onStart( __start );
-			build.onEnd( ( args ) => {
-				tmEnd.start( __done, 200 );
+			build.onEnd( ( result ) => {
+				if( result.errors && result.errors.length>0 ) {
+					for( let err of result.errors ) {
+						log( colors.red( colors.symbols.cross)+colors.white( ` ${err.location.file}(${err.location.line}): ${err.text}` ));
+							//JSON.stringify(err) ) );
+					}
+
+					log( colors.red( colors.symbols.cross)+colors.white( ' --------------------------------------------------------' ) );
+					log( colors.red( colors.symbols.cross)+colors.white( ` ${result.errors.length} errors. no rebuild until correction\n`));
+					errors++;
+				}
+				else {
+					tmEnd.start( __done, 200 );
+				}
 			} );
 		}
 	}
@@ -434,14 +453,14 @@ async function build( options ) {
 
 
 	const ctx = await esbuild.context({
-		logLevel: "warning",
+		logLevel: "silent",
 		entryPoints: [pkg.main],
 		outdir,
 		bundle: true,
 		sourcemap,
 		minify,
 		keepNames: true,
-		target: (is_node || is_electron) ? "node18" : "esnext",
+		target: (is_node || is_electron) ? "chrome108" : "esnext",
 		charset: "utf8",
 		// for now there is a problem with htmlplugin, i have created an issue
 		// assetNames: 'assets/[name]',
@@ -450,16 +469,23 @@ async function build( options ) {
 		legalComments: "none",
 		platform: (is_node || is_electron) ? "node" : "browser",
 		format: "iife",
+		supported: { 
+			"dynamic-import": false,
+		},
 		define: release ? {
 		}:
 		{ DEBUG: "1"
 		},
-		external: is_electron ? ["electron"] : pkg.x4build?.external,
+		external: is_electron ? ["electron",...pkg.x4build?.external] : pkg.x4build?.external,
 		//allowOverwrite: true,
 		loader: {
 			'.png': 'file',
+			'.webp': 'file',
 			'.svg': 'file',
-			'.json': 'json',
+			'.png': 'file',
+			'.jpg': 'file',
+			'.jpeg': 'file',
+			'.json': 'file',
 			'.ttf': 'dataurl',
 		},
 		plugins: [
@@ -600,6 +626,16 @@ async function build( options ) {
 						relativePath = "/index.html";
 					}
 
+					const aliases = pkg.x4build.alias;
+					if( aliases ) {
+						for( const map in aliases ) {
+							if( relativePath.startsWith(map) ) {
+								relativePath = aliases[map]+relativePath.substring( map.length );
+								break;
+							}
+						}
+					}
+
 					const absolutePath = path.join(outdir, relativePath);
 
 					try {
@@ -610,6 +646,11 @@ async function build( options ) {
 								'.htm': 'text/html',
 								'.html': 'text/html',
 								'.css': 'text/css',
+								'.png': 'image/png',
+								'.jpg': 'image/jpeg',
+								'.jpeg': 'image/jpeg',
+								'.gif': 'image/gif',
+								'.webp': 'image/webp',
 								'.js': 'application/javascript',
 								'.json': 'application/json',
 							};
@@ -673,7 +714,7 @@ async function build( options ) {
 				}
 
 				tmRebuild.start( ( ) => {
-					ctx.rebuild( );
+					ctx.rebuild( ).catch( ( ) => {} );	// error is displayed by the plugin
 				}, 1000 );
 			}
 
@@ -696,6 +737,6 @@ async function build( options ) {
 
 	log(colors.cyan.bold("\n:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::\n"));
 
-	ctx.rebuild( );
+	ctx.rebuild( ).catch( ( ) => {} );	// error is displayed by the plugin
 }
 
