@@ -122,7 +122,6 @@ async function create( name, options ) {
 		}
 	}
 
-	logn( "\u001b[2J" )
 	log(colors.cyan(":: new project ")+colors.white(name)+colors.cyan(" ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::\n"));	
 
 
@@ -184,60 +183,52 @@ async function create( name, options ) {
 			log( colors.green(colors.symbols.pointer)+colors.white(" setup project..."))
 
 			// update package.json
-			function update_pkg( pkgname, name, debug, release ) {
+			function update_pkg( pkgname, name, debug, sub_name = "" ) {
 				const pkg = loadJSON( pkgname );
 				pkg.name = name;
 				pkg.description = `${name} project`
-				pkg.scripts = {
-					"build-dev": "x4build "+debug,
-					"build-release": "x4build "+release,
-				};
-				pkg.x4build = {
-					"type": model,
-				};
+
+				if( !pkg.scripts ) {
+					pkg.scripts = {};
+				}
+
+				pkg.scripts[`build-${sub_name}dev`] = "x4build "+debug;
+				pkg.scripts[`build-${sub_name}release`] = "x4build build --release";
+				
+				if( !pkg.x4build ) {
+					pkg.x4build = {};
+				}
+				pkg.x4build.type = model;
+
 				writeJSON( pkgname, pkg );
 			}
 			
 			switch( model ) {
 				case "html": {
-					update_pkg( path.join(real,"package.json"), name, 
-						"build --watch --serve", 
-						"build --release" );
+					update_pkg( path.join(real,"package.json"), name, "build --watch --serve" );
 					break;
 				}
 
 				case "electron": {
-					update_pkg( path.join(real,"package.json"), name, 
-						"build --watch", 
-						"build --release" );
-
+					update_pkg( path.join(real,"package.json"), name, "build --watch" );
 					break;
 				}
 
 				case "node": {
-					update_pkg( path.join(real,"package.json"), name, 
-						"build --watch --monitor", 
-						"build --release" );
-
+					update_pkg( path.join(real,"package.json"), name, "build --watch --monitor" );
 					break;
 				}
 
 				case "server": {
-					update_pkg( path.join(real,"src","server","package.json"), name, 
-						"build --watch --monitor", 
-						"build --release" );
-
-					update_pkg( path.join(real,"src","client","package.json"), name, 
-						"build --watch --hmr", 
-						"build --release" );
-
+					update_pkg( path.join(real,"src","server","package.json"), name, "build --watch --monitor", "cli-" );
+					update_pkg( path.join(real,"src","client","package.json"), name, "build --watch --hmr", "srv-" );
 					break;
 				}
 			}
 
 			if( model=="server" ) {
 				log( colors.green(colors.symbols.pointer)+colors.white(" installing dependencies 1/2..."))
-				spawnSync( "npm i", {
+				spawnSync( "npm install --no-fund --no-audit", {
 					cwd: path.join(real,"src","server"),
 					shell: true,
 					stdio: "inherit",
@@ -245,7 +236,7 @@ async function create( name, options ) {
 				} )
 
 				log( colors.green(colors.symbols.pointer)+colors.white(" installing dependencies 2/2..."))
-				spawnSync( "npm i", {
+				spawnSync( "npm install --no-fund --no-audit", {
 					cwd: path.join(real,"src","client"),
 					shell: true,
 					stdio: "inherit",
@@ -254,7 +245,7 @@ async function create( name, options ) {
 			}
 			else {
 				log( colors.green(colors.symbols.pointer)+colors.white(" installing dependencies..."))
-				spawnSync( "npm i", {
+				spawnSync( "npm install --no-fund --no-audit", {
 					cwd: real,
 					shell: true,
 					stdio: "inherit",
@@ -267,6 +258,7 @@ async function create( name, options ) {
 			//}
 
 			log( colors.green(colors.symbols.heart)+colors.white(" project is READY..."))
+			process.exit( 0 );
 		}
 		catch( err ) {
 			log( colors.red(err) );
@@ -305,8 +297,6 @@ async function build( options ) {
 	//	
 	//}
 
-	logn( "\u001b[2J" )
-	
 	log(colors.cyan("::")+colors.white(" X4BUILD ")+colors.cyan("::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::\n"));
 
 	log(colors.green("type.........: "), colors.white(is_node ? "node" : (is_electron ? "electron" : "html")) );
