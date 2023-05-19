@@ -10,6 +10,10 @@
 *
 **/
 
+const VERSION = "1.5.18";
+
+
+
 import * as path from 'path';
 import * as fs from 'fs';
 import fse from 'fs-extra';
@@ -72,7 +76,7 @@ function writeJSON( fname, json ) {
 }
 
 program.name( 'x4build' )
-	.version( '1.5' );
+	.version( VERSION );
 
 program.command( 'create' )
 		.description( 'create a new project' )
@@ -94,6 +98,9 @@ program.parse();
 
 
 // :: CREATE ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+logn( "\u001b[2J" )
+log(colors.yellow(":: x4build ")+colors.white(VERSION)+"\n"));	
 
 async function create( name, options ) {
 	const model = options.type;
