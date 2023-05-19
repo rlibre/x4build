@@ -220,8 +220,8 @@ async function create( name, options ) {
 				}
 
 				case "server": {
-					update_pkg( path.join(real,"src","server","package.json"), name, "build --watch --monitor", "cli-" );
-					update_pkg( path.join(real,"src","client","package.json"), name, "build --watch --hmr", "srv-" );
+					update_pkg( path.join(real,"src","server","package.json"), name, "build --watch --monitor", "srv-" );
+					update_pkg( path.join(real,"src","client","package.json"), name, "build --watch --hmr", "cli-" );
 					break;
 				}
 			}
