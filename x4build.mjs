@@ -10,15 +10,12 @@
 *
 **/
 
-const VERSION = "1.5.18";
-
-
-
 import * as path from 'path';
 import * as fs from 'fs';
 import fse from 'fs-extra';
 import * as os from 'os';
 import * as http from 'http';
+import * as url from 'url';
 
 import colors from "ansi-colors"
 import { execSync, spawn, spawnSync } from "child_process";
@@ -33,6 +30,7 @@ import htmlPlugin from '@chialab/esbuild-plugin-html';
 import { lessLoader } from 'esbuild-plugin-less';
 
 const runningdir = path.resolve( );
+const x4builddir = url.fileURLToPath(new URL('.', import.meta.url));
 
 function logn( ...args ) {
 
@@ -53,6 +51,15 @@ function log( ...args ) {
 	logn( ...args );
 	process.stdout.write( "\n" );
 }
+
+
+
+const VERSION = JSON.parse( fs.readFileSync( path.join(x4builddir,"/package.json") ) ).version;
+
+logn( "\u001b[2J" )
+log(colors.cyan("\n\n\nx4build "+VERSION+"\n"));	
+
+
 
 function loadJSON( fname ) {
 	let raw_json = fs.readFileSync( fname, { encoding: "utf-8" });
@@ -98,9 +105,6 @@ program.parse();
 
 
 // :: CREATE ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-
-logn( "\u001b[2J" )
-log(colors.yellow(":: x4build ")+colors.white(VERSION)+"\n"));	
 
 async function create( name, options ) {
 	const model = options.type;
