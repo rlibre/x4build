@@ -20,18 +20,18 @@ x4 solution builder
 	- watch: 		watch for source modifications
 	- monitor=<file>:	monitor for file modification (node)
 
-	- create name=<project name> model=<html, electron or node> <overwrite>
+	- create <project name> model=<html, electron or node> <overwrite>
 
 example:
 ```bash
 	# create an empty electron project
 	# this will create a new folder named test with all files to start a new electron project
-	npx create name=test model=electron
+	npx x4build create test model=electron
 ```
 
 ```bash
-	# build an lectron project and monitor the main.js file
-	# kill &nd reload main.js when chaning
+	# build an electron project and monitor the main.js file
+	# kill & reload main.js when changing
 	npx x4build electron monitor=main.js
 ```
 	
@@ -52,7 +52,7 @@ example:
 ## tsconfig.json
 ```json
 "compilerOptions": {
-	"outDir": "../../dist",
+	"outDir": "./dist",
 }
 ```
 

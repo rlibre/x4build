@@ -12,6 +12,7 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
+import fse from 'fs-extra';
 import * as os from 'os';
 import * as http from 'http';
 
@@ -71,7 +72,7 @@ function writeJSON( fname, json ) {
 }
 
 program.name( 'x4build' )
-	.version( '1.5.7' );
+	.version( '1.5.15' );
 
 program.command( 'create' )
 		.description( 'create a new project' )
@@ -96,7 +97,6 @@ program.parse();
 // :: CREATE ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
 async function create( name, options ) {
-
 	const model = options.type;
 	
 	switch( model ) {
@@ -188,35 +188,35 @@ async function create( name, options ) {
 			switch( model ) {
 				case "html": {
 					update_pkg( path.join(real,"package.json"), name, 
-						"--type=html --watch --serve", 
-						"--type=html --release" );
+						"build --type=html --watch --serve", 
+						"build --type=html --release" );
 					break;
 				}
 
 				case "electron": {
 					update_pkg( path.join(real,"package.json"), name, 
-						"--type=electron --watch", 
-						"--type=electron --release" );
+						"build --type=electron --watch", 
+						"build --type=electron --release" );
 
 					break;
 				}
 
 				case "node": {
 					update_pkg( path.join(real,"package.json"), name, 
-						"--type=node --watch --monitor", 
-						"--type=node --release" );
+						"build --type=node --watch --monitor", 
+						"build --type=node --release" );
 
 					break;
 				}
 
 				case "server": {
 					update_pkg( path.join(real,"src","server","package.json"), name, 
-						"--type=node --watch --monitor", 
-						"--type=node --release" );
+						"build --type=node --watch --monitor", 
+						"build --type=node --release" );
 
 					update_pkg( path.join(real,"src","client","package.json"), name, 
-						"--type=html --watch --hmr", 
-						"--type=html --release" );
+						"build --type=html --watch --hmr", 
+						"build --type=html --release" );
 
 					break;
 				}
@@ -283,6 +283,9 @@ async function build( options ) {
 	const need_hmr = options.hmr  ?? false;
 	const outdir = path.resolve( tscfg?.compilerOptions?.outDir ?? "./bin" );
 
+	const paths = tscfg.compilerOptions?.paths;
+
+
 	let monitor = options.monitor;
 	//if (monitor!==false && monitor!==true ) {
 	//	monitor = path.resolve(path.join(outdir, monitor));
@@ -322,14 +325,21 @@ async function build( options ) {
 		tasks.forEach( task => {
 			task = task.replaceAll( /\$\{\w*outdir\w*\}/ig, path.resolve(outdir) );
 			task = task.replaceAll( /\$\{\w*srcdir\w*\}/ig, path.resolve(runningdir) );
+			task = task.trim( );
 
 			log( colors.green(colors.symbols.pointer)+colors.white( " "+task) );
-			
-			const ret = spawnSync( task, {
-				cwd: runningdir,
-				shell: true,
-				stdio: "inherit"
-			} );
+
+			if( task.startsWith('@copy') ) {
+				const [copy,src,dst] = task.split( ' ' );
+				fse.copySync( path.resolve(src), path.resolve(dst) );
+			}
+			else {
+				spawnSync( task, {
+					cwd: runningdir,
+					shell: true,
+					stdio: "inherit"
+				} );
+			}
 		} );
 	}
 
@@ -366,6 +376,8 @@ async function build( options ) {
 	}
 
 	const tmEnd = new Timer( );
+	let proc = null;
+	
 	function __done( ) {
 
 		if( !errors ) {
@@ -380,12 +392,12 @@ async function build( options ) {
 
 			const startProcess = () => {
 
-				console.log(colors.green(`starting process bin/index.js`));
+				console.log(colors.green(`starting process bin/${options.monitor}`));
 				try {
-					process.chdir(path.join(root_dir,outdir));
-					const proc = spawn("node", ["index.js"], {
+					const proc = spawn("node", [options.monitor], {
 						stdio: 'inherit',
 						stderr: 'inherit',
+						cwd:outdir
 					});
 					
 					proc.on("exit", (code) => {
@@ -407,12 +419,12 @@ async function build( options ) {
 				
 			}
 
-			if( options.run ) {
-				if( cache.proc && !cache.__destroyed) {
-					process.kill(cache.proc.pid, "SIGTERM");
+			if( options.monitor ) {
+				if( proc && !proc.__destroyed) {
+					process.kill(proc.pid, "SIGTERM");
 				}
 				
-				cache.proc = startProcess( );
+				proc = startProcess( );
 			}	
 
 			if (!(pkg?.x4build?.postBuild) ) {
@@ -429,14 +441,19 @@ async function build( options ) {
 
 	const buildDonePlugin = {
 		name: 'done',
-		
+
 		setup(build) {
 			build.onStart( __start );
 			build.onEnd( ( result ) => {
 				if( result.errors && result.errors.length>0 ) {
 					for( let err of result.errors ) {
-						log( colors.red( colors.symbols.cross)+colors.white( ` ${err.location.file}(${err.location.line}): ${err.text}` ));
-							//JSON.stringify(err) ) );
+						if( err.location ) {
+							console.log( ` ${err.location.file}(${err.location.line}): ${err.text}` );
+							log( colors.red( colors.symbols.cross)+colors.white( ` ${err.location.file}(${err.location.line}): ${err.text}` ));
+						}
+						else {
+							log( colors.red( colors.symbols.cross)+colors.white( ` ${err.text}` ));
+						}
 					}
 
 					log( colors.red( colors.symbols.cross)+colors.white( ' --------------------------------------------------------' ) );
@@ -447,10 +464,53 @@ async function build( options ) {
 					tmEnd.start( __done, 200 );
 				}
 			} );
+
+			if( paths ) {
+				
+				function setupResolver( p, mapping ) {
+
+					const search = '^'+p.replaceAll( '^', '\\^' ).replaceAll( '*', '(.*)');
+					const re = new RegExp( search, 'g' );
+
+					console.log( colors.green(colors.symbols.starsOn)+colors.white( ` resolve path ${p} by ${mapping}`) );
+
+					build.onResolve( { filter: re }, (args) => {
+						
+						const xx = re.exec( args.path );
+						if( xx ) {
+							const res = path.resolve( mapping.replace( '*', xx[1] ) );
+							const parts = path.parse( res );
+
+							return {
+								path: path.join( parts.dir, parts.name+'.ts' ),
+							}
+						}
+						else {
+							return {}
+						}
+					} );
+				}
+
+				for( const p in paths ) {
+					setupResolver( p, paths[p][0] );					
+				}
+			}
 		}
 	}
 
+	let external = [];
+	if( is_electron ) {
+		external.push( "electron" );
+	}
+	
+	if( pkg.x4build?.external ) {
+		external = external.concat( pkg.x4build?.external );
+	}
 
+	let override = {};
+	if( pkg.x4build?.override ) {
+		override = pkg.x4build?.override;
+	}
 
 	const ctx = await esbuild.context({
 		logLevel: "silent",
@@ -463,9 +523,9 @@ async function build( options ) {
 		target: (is_node || is_electron) ? "chrome108" : "esnext",
 		charset: "utf8",
 		// for now there is a problem with htmlplugin, i have created an issue
-		// assetNames: 'assets/[name]',
-		// chunkNames: 'assets/[name]',
-		publicPath: pkg?.x4build?.publicPath,
+		assetNames: 'assets/[name]',
+		chunkNames: 'assets/[name]',
+		publicPath: '.',	//pkg?.x4build?.publicPath,
 		legalComments: "none",
 		platform: (is_node || is_electron) ? "node" : "browser",
 		format: "iife",
@@ -476,7 +536,7 @@ async function build( options ) {
 		}:
 		{ DEBUG: "1"
 		},
-		external: is_electron ? ["electron",...pkg.x4build?.external] : pkg.x4build?.external,
+		external,
 		//allowOverwrite: true,
 		loader: {
 			'.png': 'file',
@@ -485,13 +545,15 @@ async function build( options ) {
 			'.png': 'file',
 			'.jpg': 'file',
 			'.jpeg': 'file',
-			'.json': 'file',
+			'.json': 'json',
 			'.ttf': 'dataurl',
+			...pkg.x4build?.loaders
 		},
 		plugins: [
 			...(is_node ? node_plugins : html_plugins),
 			buildDonePlugin
 		],
+		...(override ?? []),
 	});
 
 	//if( options.watch ) {
@@ -595,7 +657,7 @@ async function build( options ) {
 					log("ERROR:", err);
 				});
 
-				log(colors.green( colors.symbols.check)+colors.white(` HMR started`));
+				log(colors.green( colors.symbols.starsOn)+colors.white(` HMR started`));
 		}
 		
 		//------------------------------------------------------------------------
@@ -626,7 +688,7 @@ async function build( options ) {
 						relativePath = "/index.html";
 					}
 
-					const aliases = pkg.x4build.alias;
+					const aliases = pkg.x4build?.alias;
 					if( aliases ) {
 						for( const map in aliases ) {
 							if( relativePath.startsWith(map) ) {
@@ -692,7 +754,7 @@ async function build( options ) {
 				});
 			});
 
-			log(colors.green( colors.symbols.check)+colors.white(` server listening on http://${host}:${port}`));
+			log(colors.green( colors.symbols.starsOn)+colors.white(` server listening on http://${host}:${port}`));
 		}
 
 		if( watch ) {
@@ -731,7 +793,7 @@ async function build( options ) {
 					log("ERROR:", err);
 				});
 
-				log(colors.green( colors.symbols.check)+colors.white(` watching for modifications on ${path.resolve(watch_path)}` ) );
+				log(colors.green( colors.symbols.starsOn)+colors.white(` watching for modifications on ${path.resolve(watch_path)}` ) );
 		}
 	}
 
