@@ -72,7 +72,7 @@ function writeJSON( fname, json ) {
 }
 
 program.name( 'x4build' )
-	.version( '1.5.15' );
+	.version( '1.5' );
 
 program.command( 'create' )
 		.description( 'create a new project' )
@@ -83,7 +83,6 @@ program.command( 'create' )
 
 program.command( "build" )
 		.description( 'build the project' )
-		.option( '--type <type>', 'project type - one of "html", "node", "electron"' )
 		.option( '--release', 'release mode' )
 		.option('--serve', 'start a http server (only html mode)' )
 		.option('--hmr', 'handle Hot Module Replacement (hml and electron mode)' )
@@ -182,41 +181,44 @@ async function create( name, options ) {
 					"build-dev": "x4build "+debug,
 					"build-release": "x4build "+release,
 				};
+				pkg.x4build = {
+					"type": model,
+				};
 				writeJSON( pkgname, pkg );
 			}
 			
 			switch( model ) {
 				case "html": {
 					update_pkg( path.join(real,"package.json"), name, 
-						"build --type=html --watch --serve", 
-						"build --type=html --release" );
+						"build --watch --serve", 
+						"build --release" );
 					break;
 				}
 
 				case "electron": {
 					update_pkg( path.join(real,"package.json"), name, 
-						"build --type=electron --watch", 
-						"build --type=electron --release" );
+						"build --watch", 
+						"build --release" );
 
 					break;
 				}
 
 				case "node": {
 					update_pkg( path.join(real,"package.json"), name, 
-						"build --type=node --watch --monitor", 
-						"build --type=node --release" );
+						"build --watch --monitor", 
+						"build --release" );
 
 					break;
 				}
 
 				case "server": {
 					update_pkg( path.join(real,"src","server","package.json"), name, 
-						"build --type=node --watch --monitor", 
-						"build --type=node --release" );
+						"build --watch --monitor", 
+						"build --release" );
 
 					update_pkg( path.join(real,"src","client","package.json"), name, 
-						"build --type=html --watch --hmr", 
-						"build --type=html --release" );
+						"build --watch --hmr", 
+						"build --release" );
 
 					break;
 				}
@@ -272,7 +274,7 @@ async function build( options ) {
 	const pkg = loadJSON( "package.json");
 	const tscfg = loadJSON( "tsconfig.json" );
 
-	const type = options.type;
+	const type = pkg?.x4build?.type ?? 'html';
 
 	const is_node = type=="node";
 	const is_electron = type=="electron";

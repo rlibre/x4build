@@ -6,7 +6,7 @@ x4 solution builder
 ```bash
 	# create an empty electron project
 	# this will create a new folder named test with all files to start a new electron project
-	npx x4build create test --model=electron
+	npx x4build create test --type=html
 ```
 
 - `--type=<type>` where `<type>` is one of
@@ -23,7 +23,7 @@ x4 solution builder
 ```bash
 	# build an electron project and monitor the main.js file
 	# kill & reload main.js when changing
-	npx x4build build --watch --monitor=main.js
+	npx x4build build --serve --watch --hmr
 ```
 
 - `--release`: 	build the release 
